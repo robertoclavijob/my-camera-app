@@ -16,6 +16,7 @@ function App() {
       'video/webm;codecs=vp8,opus', // Video codec VP8 with Opus audio codec
       'video/webm;codecs=vp9,opus', // Video codec VP9 with Opus audio codec
       'video/mp4;codecs=h264,aac',   // H.264 video codec with AAC audio codec
+      'video/mp4;codecs="avc1.42E01E, mp4a.40.2"'
     ];
 
     for (let i = 0; i < possibleTypes.length; i++) {
