@@ -15,21 +15,24 @@ function App() {
     const possibleTypes = [
       'video/webm;codecs=vp9,opus', // Video codec VP9 with Opus audio codec
       'video/webm;codecs=vp8,opus', // Video codec VP8 with Opus audio codec
+      'video/webm',
       'video/mp4',
       'video/mp4;codecs=h264,aac',   // H.264 video codec with AAC audio codec
       'video/mp4;codecs="avc1.42E01E, mp4a.40.2"'
     ];
 
     for (let i = 0; i < possibleTypes.length; i++) {
-      if (MediaRecorder.isTypeSupported(possibleTypes[i])) {
-        const [video = '', audio = ''] = possibleTypes[i].split(';codecs=');
-        const codecs = audio.split(',');
-        setVideoCodec(video.split('/')[1]); // Extract video codec (webm)
-        setAudioCodec(codecs[0]); // Extract audio codec (opus)
-        console.log(`Using codec: ${possibleTypes[i]}`);
-        console.log(`Using ${possibleTypes[i]}`);
-        return possibleTypes[i];
+      if (!MediaRecorder.isTypeSupported(possibleTypes[i])) {
+        console.log(possibleTypes[i], "not supported.");
+        continue;
       }
+      const [video = '', audio = ''] = possibleTypes[i].split(';codecs=');
+      const codecs = audio.split(',');
+      setVideoCodec(video.split('/')[1]); // Extract video codec (webm)
+      setAudioCodec(codecs[0]); // Extract audio codec (opus)
+      console.log(`Using codec: ${possibleTypes[i]}`);
+      console.log(`Using ${possibleTypes[i]}`);
+      return possibleTypes[i];
     }
     return ''; // Returns empty if no compatible codecs are found
   };
@@ -62,7 +65,7 @@ function App() {
       streamRef.current = stream;
 
       const mimeType = getSupportedMimeType();
-      const options = mimeType ? { mimeType } : {};
+      const options = mimeType ? { mimeType, videoBitsPerSecond: 500000 } : {};
 
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
