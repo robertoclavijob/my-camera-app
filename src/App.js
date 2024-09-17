@@ -58,16 +58,28 @@ function App() {
     getBrowserName(); // Get browser name when component mounts
   }, []);
 
-  // Starts recording video and audio
+  // Starts recording video and audio (from mic and speakers)
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      streamRef.current = stream;
+      // Capture the microphone audio
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Capture the screen audio (speakers)
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+
+      // Merge both streams (mic and speakers)
+      const combinedStream = new MediaStream([
+        ...micStream.getAudioTracks(),
+        ...displayStream.getAudioTracks(),
+        ...displayStream.getVideoTracks(),
+      ]);
+
+      streamRef.current = combinedStream;
 
       const mimeType = getSupportedMimeType();
       const options = mimeType ? { mimeType, videoBitsPerSecond: 500000 } : {};
 
-      const mediaRecorder = new MediaRecorder(stream, options);
+      const mediaRecorder = new MediaRecorder(combinedStream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (e) => {
@@ -108,7 +120,7 @@ function App() {
 
   return (
     <div>
-      <h1>Record Video and Audio</h1>
+      <h1>Record Video, Mic, and Speakers</h1>
       <div>
         {isRecording ? (
           <button onClick={stopRecording}>Stop Recording</button>
