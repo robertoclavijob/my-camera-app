@@ -10,25 +10,26 @@ function App() {
 
   const startRecording = async () => {
     try {
-      // Captura de pantalla y audio del sistema
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100,
-        },
-      });
-
-      // Captura el audio del micrófono
-      const micStream = await navigator.mediaDevices.getUserMedia({
+      // Captura el audio del sistema (tab)
+      const systemAudioStream = await navigator.mediaDevices.getDisplayMedia({
         audio: true,
       });
 
-      // Combinar ambas pistas (pantalla + audio del sistema y micrófono)
+      // Captura el video de la cámara y el audio del micrófono
+      const userMediaStream = await navigator.mediaDevices.getUserMedia({
+        video: true, // Video de la cámara del usuario
+        audio: true,
+      });
+
+      // Combinar las pistas (video de la cámara + audio del micrófono + audio del sistema)
       const combinedStream = new MediaStream([
-        ...displayStream.getTracks(),
-        ...micStream.getAudioTracks(), // Añadir solo la pista de audio del micrófono
+        /*
+        Solo captura audio del tab. Pero si cambiamos el orden del array 
+        y ponemos userMediaStream primero capturara solo audio del microfono
+        */
+        ...systemAudioStream.getAudioTracks(), // Añadir pista de audio del sistema
+        ...userMediaStream.getAudioTracks(), // Añadir pista de audio del micrófono
+        ...userMediaStream.getVideoTracks(), // Añadir pista de video de la cámara
       ]);
 
       streamRef.current = combinedStream;
@@ -54,7 +55,6 @@ function App() {
 
       mediaRecorder.start();
       setIsRecording(true);
-
     } catch (error) {
       console.error('Error al acceder a los dispositivos multimedia:', error);
     }
