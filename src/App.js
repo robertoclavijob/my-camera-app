@@ -6,37 +6,37 @@ function App() {
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
+  const [audioFileURL, setAudioFileURL] = useState('');
   const audioRef = useRef(null); // Referencia para el audio
 
   const startRecording = async () => {
     try {
-      // Captura el audio del sistema (tab)
-      const systemAudioStream = await navigator.mediaDevices.getDisplayMedia({
-        audio: true,
-      });
-
       // Captura el video de la cámara y el audio del micrófono
       const userMediaStream = await navigator.mediaDevices.getUserMedia({
         video: true, // Video de la cámara del usuario
         audio: true, // Audio del micrófono
       });
 
-      // Crear un AudioContext para mezclar ambos streams
+      // Crear un AudioContext para mezclar los streams de audio
       const audioContext = new AudioContext();
-      const systemAudioSource = audioContext.createMediaStreamSource(systemAudioStream);
+
+      // Captura el audio del micrófono
       const userAudioSource = audioContext.createMediaStreamSource(userMediaStream);
+
+      // Captura el audio generado por la aplicación (del elemento <audio> de tu app)
+      const appAudioSource = audioContext.createMediaElementSource(audioRef.current);
 
       // Crear un destino para combinar las pistas de audio
       const destination = audioContext.createMediaStreamDestination();
 
-      // Conectar ambos audios al destino
-      systemAudioSource.connect(destination);
+      // Conectar ambos audios al destino (el audio del micrófono y el de la app)
       userAudioSource.connect(destination);
+      appAudioSource.connect(destination);
 
-      // Combinar las pistas (video de la cámara + audio mezclado del micrófono y sistema)
+      // Combinar las pistas: video de la cámara y audio mezclado (micrófono + audio app)
       const combinedStream = new MediaStream([
-        ...userMediaStream.getVideoTracks(), // Añadir pista de video de la cámara
-        ...destination.stream.getAudioTracks(), // Añadir la pista de audio combinada
+        ...userMediaStream.getVideoTracks(), // Video de la cámara
+        ...destination.stream.getAudioTracks(), // Pistas de audio combinadas
       ]);
 
       streamRef.current = combinedStream;
@@ -73,14 +73,24 @@ function App() {
     setIsRecording(false);
   };
 
+  // Manejar la selección de archivo de audio
+  const handleAudioFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const audioURL = URL.createObjectURL(file);
+      setAudioFileURL(audioURL); // Establece la URL del archivo seleccionado
+    }
+  };
+
   return (
     <div>
-      <h1>Grabar pantalla con audio del sistema y micrófono</h1>
-      {isRecording ? (
-        <button onClick={stopRecording}>Detener grabación</button>
-      ) : (
-        <button onClick={startRecording}>Iniciar grabación</button>
-      )}
+      {audioFileURL && <><h1>Grabar pantalla con audio del sistema y micrófono</h1>
+        {isRecording ? (
+          <button onClick={stopRecording}>Detener grabación</button>
+        ) : (
+          <button onClick={startRecording}>Iniciar grabación</button>
+        )}
+      </>}
 
       {videoURL && (
         <div>
@@ -89,11 +99,18 @@ function App() {
         </div>
       )}
 
-      <h2>Audio de ejemplo:</h2>
-      <audio ref={audioRef} controls>
-        <source src="https://commondatastorage.googleapis.com/codeskulptor-demos/DDR_assets/Kangaroo_MusiQue_-_The_Neverwritten_Role_Playing_Game.mp3" type="audio/mpeg" />
-        Tu navegador no soporta la reproducción de audio.
-      </audio>
+      <h2>Selecciona un archivo de audio para reproducir:</h2>
+      <input type="file" accept="audio/*" onChange={handleAudioFileChange} /> {/* Input para seleccionar archivo */}
+
+      {audioFileURL && (
+        <div>
+          <h2>Audio seleccionado:</h2>
+          <audio ref={audioRef} controls>
+            <source src={audioFileURL} type="audio/mpeg" />
+            Tu navegador no soporta la reproducción de audio.
+          </audio>
+        </div>
+      )}
     </div>
   );
 }
