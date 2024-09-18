@@ -18,18 +18,25 @@ function App() {
       // Captura el video de la cámara y el audio del micrófono
       const userMediaStream = await navigator.mediaDevices.getUserMedia({
         video: true, // Video de la cámara del usuario
-        audio: true,
+        audio: true, // Audio del micrófono
       });
 
-      // Combinar las pistas (video de la cámara + audio del micrófono + audio del sistema)
+      // Crear un AudioContext para mezclar ambos streams
+      const audioContext = new AudioContext();
+      const systemAudioSource = audioContext.createMediaStreamSource(systemAudioStream);
+      const userAudioSource = audioContext.createMediaStreamSource(userMediaStream);
+
+      // Crear un destino para combinar las pistas de audio
+      const destination = audioContext.createMediaStreamDestination();
+
+      // Conectar ambos audios al destino
+      systemAudioSource.connect(destination);
+      userAudioSource.connect(destination);
+
+      // Combinar las pistas (video de la cámara + audio mezclado del micrófono y sistema)
       const combinedStream = new MediaStream([
-        /*
-        Solo captura audio del tab. Pero si cambiamos el orden del array 
-        y ponemos userMediaStream primero capturara solo audio del microfono
-        */
-        ...systemAudioStream.getAudioTracks(), // Añadir pista de audio del sistema
-        ...userMediaStream.getAudioTracks(), // Añadir pista de audio del micrófono
         ...userMediaStream.getVideoTracks(), // Añadir pista de video de la cámara
+        ...destination.stream.getAudioTracks(), // Añadir la pista de audio combinada
       ]);
 
       streamRef.current = combinedStream;
