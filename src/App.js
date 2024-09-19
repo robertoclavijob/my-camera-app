@@ -1,49 +1,119 @@
-import React, { useState, useRef } from 'react';
+import axios from 'axios';
+import React, { useState, useRef, useEffect } from 'react';
+import { RetellWebClient } from 'retell-client-js-sdk';
+import { INTERVIEW_ID, NEXT_PUBLIC_RETELL_AGENT_ID, NEXT_PUBLIC_RETELL_API_URL } from './helpers/retell';
+
+const retellWebClient = new RetellWebClient();
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
-  const [videoURL, setVideoURL] = useState('');
+  const [mediaURL, setMediaURL] = useState(''); // URL del video
   const mediaRecorderRef = useRef(null);
-  const streamRef = useRef(null);
   const chunksRef = useRef([]);
-  const [audioFileURL, setAudioFileURL] = useState('');
-  const audioRef = useRef(null); // Referencia para el audio
+  const audioContextRef = useRef(null);
+  const retellStreamDestination = useRef(null);
+  const microphoneStreamRef = useRef(null);
+  const videoStreamRef = useRef(null); // Stream de video del micrófono
+
+  useEffect(() => {
+    // Inicializamos el AudioContext
+    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+
+    retellWebClient.on('audio', (audio) => {
+      const audioBuffer = audioContextRef.current.createBuffer(
+        1,
+        audio.length,
+        audioContextRef.current.sampleRate
+      );
+
+      audioBuffer.copyToChannel(audio, 0);
+
+      const sourceNode = audioContextRef.current.createBufferSource();
+      sourceNode.buffer = audioBuffer;
+
+      if (!retellStreamDestination.current) {
+        retellStreamDestination.current = audioContextRef.current.createMediaStreamDestination();
+      }
+
+      sourceNode.connect(retellStreamDestination.current);
+      sourceNode.start();
+    });
+
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  const waitForRetellStream = async () => {
+    return new Promise((resolve) => {
+      const checkStream = setInterval(() => {
+        if (retellStreamDestination.current) {
+          clearInterval(checkStream);
+          resolve(retellStreamDestination.current);
+        }
+      }, 100);
+    });
+  };
+
+  async function registerCall(agentId, interviewId) {
+    try {
+      const response = await axios.post(
+        `${NEXT_PUBLIC_RETELL_API_URL}/register-call-on-your-server`,
+        {
+          agentId: agentId,
+          interviewId: interviewId,
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error al registrar la llamada:', error);
+    }
+  }
 
   const startRecording = async () => {
     try {
-      // Captura el video de la cámara y el audio del micrófono
-      const userMediaStream = await navigator.mediaDevices.getUserMedia({
-        video: true, // Video de la cámara del usuario
-        audio: true, // Audio del micrófono
-      });
+      const resp = await registerCall(NEXT_PUBLIC_RETELL_AGENT_ID, INTERVIEW_ID);
+      const registerCallResponse = resp;
 
-      // Crear un AudioContext para mezclar los streams de audio
-      const audioContext = new AudioContext();
+      if (registerCallResponse && registerCallResponse.access_token) {
+        await retellWebClient.startCall({
+          accessToken: registerCallResponse.access_token,
+          emitRawAudioSamples: true,
+        });
 
-      // Captura el audio del micrófono
-      const userAudioSource = audioContext.createMediaStreamSource(userMediaStream);
+        console.log("Call started with Retell");
+      } else {
+        throw new Error('Access token no disponible');
+      }
 
-      // Captura el audio generado por la aplicación (del elemento <audio> de tu app)
-      const appAudioSource = audioContext.createMediaElementSource(audioRef.current);
+      const microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      microphoneStreamRef.current = microphoneStream;
 
-      // Crear un destino para combinar las pistas de audio
-      const destination = audioContext.createMediaStreamDestination();
+      const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      videoStreamRef.current = videoStream;
 
-      // Conectar ambos audios al destino (el audio del micrófono y el de la app)
-      userAudioSource.connect(destination);
-      appAudioSource.connect(destination);
+      while (!retellStreamDestination.current) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      const retellStream = retellStreamDestination.current.stream;
 
-      // Combinar las pistas: video de la cámara y audio mezclado (micrófono + audio app)
+      const audioContext = audioContextRef.current;
+      const microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
+      const retellSource = audioContext.createMediaStreamSource(retellStream);
+
+      const mixedStreamDestination = audioContext.createMediaStreamDestination();
+      microphoneSource.connect(mixedStreamDestination);
+      retellSource.connect(mixedStreamDestination);
+
       const combinedStream = new MediaStream([
-        ...userMediaStream.getVideoTracks(), // Video de la cámara
-        ...destination.stream.getAudioTracks(), // Pistas de audio combinadas
+        ...mixedStreamDestination.stream.getAudioTracks(),
+        ...videoStream.getVideoTracks()
       ]);
 
-      streamRef.current = combinedStream;
-
       const mediaRecorder = new MediaRecorder(combinedStream, {
-        mimeType: 'video/webm',
-        audioBitsPerSecond: 128000,
+        mimeType: 'video/webm'
       });
       mediaRecorderRef.current = mediaRecorder;
 
@@ -56,59 +126,38 @@ function App() {
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
-        setVideoURL(url);
+        setMediaURL(url);
         chunksRef.current = [];
+        retellWebClient.stopCall();
       };
 
       mediaRecorder.start();
       setIsRecording(true);
+
     } catch (error) {
-      console.error('Error al acceder a los dispositivos multimedia:', error);
+      console.error('Error al iniciar la grabación:', error);
     }
   };
 
   const stopRecording = () => {
     mediaRecorderRef.current.stop();
-    streamRef.current.getTracks().forEach(track => track.stop());
+    retellWebClient.stopCall();
     setIsRecording(false);
-  };
-
-  // Manejar la selección de archivo de audio
-  const handleAudioFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const audioURL = URL.createObjectURL(file);
-      setAudioFileURL(audioURL); // Establece la URL del archivo seleccionado
-    }
   };
 
   return (
     <div>
-      {audioFileURL && <><h1>Grabar pantalla con audio del sistema y micrófono</h1>
-        {isRecording ? (
-          <button onClick={stopRecording}>Detener grabación</button>
-        ) : (
-          <button onClick={startRecording}>Iniciar grabación</button>
-        )}
-      </>}
-
-      {videoURL && (
-        <div>
-          <h2>Video grabado:</h2>
-          <video src={videoURL} controls width="500" />
-        </div>
+      <h1>Grabar audio y video</h1>
+      {isRecording ? (
+        <button onClick={stopRecording}>Detener grabación</button>
+      ) : (
+        <button onClick={startRecording}>Iniciar grabación</button>
       )}
 
-      <h2>Selecciona un archivo de audio para reproducir:</h2>
-      <input type="file" accept="audio/*" onChange={handleAudioFileChange} /> {/* Input para seleccionar archivo */}
-
-      {audioFileURL && (
+      {mediaURL && (
         <div>
-          <h2>Audio seleccionado:</h2>
-          <audio ref={audioRef} controls>
-            <source src={audioFileURL} type="audio/mpeg" />
-            Tu navegador no soporta la reproducción de audio.
-          </audio>
+          <h2>Medios grabados:</h2>
+          <video src={mediaURL} controls width={500}/>
         </div>
       )}
     </div>
