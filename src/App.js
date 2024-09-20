@@ -1,10 +1,13 @@
 import axios from 'axios';
 import React, { useState, useRef, useEffect } from 'react';
 import { RetellWebClient } from 'retell-client-js-sdk';
-import { INTERVIEW_ID, NEXT_PUBLIC_RETELL_AGENT_ID, NEXT_PUBLIC_RETELL_API_URL } from './helpers/retell';
+import { INTERVIEW_ID, RETELL_AGENT_ID, RETELL_API_URL } from './helpers/retell';
 
 const retellWebClient = new RetellWebClient();
 
+if (!RETELL_AGENT_ID || !RETELL_API_URL) {
+  throw new Error("Missing env variables!")
+}
 function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaURL, setMediaURL] = useState(''); // URL del video
@@ -46,21 +49,10 @@ function App() {
     };
   }, []);
 
-  const waitForRetellStream = async () => {
-    return new Promise((resolve) => {
-      const checkStream = setInterval(() => {
-        if (retellStreamDestination.current) {
-          clearInterval(checkStream);
-          resolve(retellStreamDestination.current);
-        }
-      }, 100);
-    });
-  };
-
   async function registerCall(agentId, interviewId) {
     try {
       const response = await axios.post(
-        `${NEXT_PUBLIC_RETELL_API_URL}/register-call-on-your-server`,
+        `${RETELL_API_URL}/register-call-on-your-server`,
         {
           agentId: agentId,
           interviewId: interviewId,
@@ -74,7 +66,7 @@ function App() {
 
   const startRecording = async () => {
     try {
-      const resp = await registerCall(NEXT_PUBLIC_RETELL_AGENT_ID, INTERVIEW_ID);
+      const resp = await registerCall(RETELL_AGENT_ID, INTERVIEW_ID);
       const registerCallResponse = resp;
 
       if (registerCallResponse && registerCallResponse.access_token) {
@@ -157,7 +149,7 @@ function App() {
       {mediaURL && (
         <div>
           <h2>Medios grabados:</h2>
-          <video src={mediaURL} controls width={500}/>
+          <video src={mediaURL} controls width={500} />
         </div>
       )}
     </div>
